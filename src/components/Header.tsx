@@ -1,26 +1,9 @@
 import React from 'react';
-import { 
-  Box, 
-  Container, 
-  Typography, 
-  Tabs, 
-  Tab, 
-  Chip, 
-  Stack, 
-  useTheme 
-} from '@mui/material';
-import { 
-  Zap, 
-  Columns, 
-  Library, 
-  GitCompare, 
-  Calculator, 
-  Scissors,
-  TrendingUp,
-  Sparkles
-} from 'lucide-react';
-import { PROMPTS, TASK_GROUPS } from '../data/prompts';
+import { Box, Container, Typography, Tabs, Tab, Chip, Stack, Tooltip } from '@mui/material';
+import { Zap, Columns, Library, GitCompare, Calculator, Scissors, TrendingUp, FlaskConical } from 'lucide-react';
+import { TASK_GROUPS } from '../data/prompts';
 import { calculateEfficiencyScore } from '../utils/tokenizer';
+import { useEvalResults } from '../state/evalResults';
 
 interface HeaderProps {
   currentTab: number;
@@ -28,14 +11,13 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange }) => {
-  const theme = useTheme();
-
-  // Calculate average library efficiency score
-  const totalEfficiency = PROMPTS.reduce(
+  const { viewList } = useEvalResults();
+  const totalEfficiency = viewList.reduce(
     (acc, p) => acc + calculateEfficiencyScore(p.quality_score, p.token_count),
     0
   );
-  const avgEfficiency = (totalEfficiency / PROMPTS.length).toFixed(1);
+  const avgEfficiency = (totalEfficiency / viewList.length).toFixed(1);
+  const measuredCount = viewList.filter((p) => p.source === 'measured').length;
 
   return (
     <Box 
@@ -44,7 +26,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange }) => {
         borderBottom: '1px solid rgba(255,255,255,0.08)',
         background: 'rgba(11, 15, 25, 0.85)',
         backdropFilter: 'blur(16px)',
-        sticky: 'top',
+        position: 'sticky',
         top: 0,
         zIndex: 1100,
         pt: 2.5,
@@ -70,20 +52,21 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange }) => {
                   width: 40, 
                   height: 40, 
                   borderRadius: '10px', 
-                  background: 'linear-gradient(135deg, #10b981 0%, #3b82f6 100%)',
+                  background: 'linear-gradient(135deg, #10b981 0%, #8b5cf6 60%, #ec4899 100%)',
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center',
-                  boxShadow: '0 0 20px rgba(16, 185, 129, 0.4)'
+                  boxShadow: '0 0 24px rgba(139, 92, 246, 0.45)'
                 }}
+                className="float"
               >
                 <Zap color="#ffffff" size={24} />
               </Box>
               <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.5px', color: '#f8fafc' }}>
-                Token<span style={{ color: '#10b981' }}>Tier</span>
+                Token<span className="gradient-text">Tier</span>
               </Typography>
               <Chip 
-                label="v1.0 MVP" 
+                label="v1.1" 
                 size="small" 
                 sx={{ 
                   height: 20, 
@@ -101,7 +84,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange }) => {
           </Box>
 
           {/* Quick Metrics Bar */}
-          <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+          <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', gap: 1.5, '& > *': { ml: '0 !important' } }}>
             <Box 
               sx={{ 
                 px: 2, 
@@ -120,7 +103,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange }) => {
                   Task Groups
                 </Typography>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#f1f5f9' }}>
-                  {TASK_GROUPS.length} Tasks ({PROMPTS.length} Prompts)
+                  {TASK_GROUPS.length} Tasks ({viewList.length} Prompts)
                 </Typography>
               </Box>
             </Box>
@@ -145,12 +128,16 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange }) => {
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#10b981' }}>
                   {avgEfficiency} Score/Token
                 </Typography>
+                <Typography variant="caption" sx={{ color: '#64748b', display: 'block', lineHeight: 1.2 }}>
+                  {measuredCount}/{viewList.length} measured
+                </Typography>
               </Box>
             </Box>
           </Stack>
         </Box>
 
         {/* Navigation Tabs */}
+        <Tooltip title={<span>Tip: press <kbd>1</kbd>–<kbd>6</kbd> to switch tabs</span>} placement="top-start" enterDelay={1200} enterNextDelay={1200}>
         <Tabs 
           value={currentTab} 
           onChange={(_, val) => onTabChange(val)}
@@ -159,7 +146,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange }) => {
           sx={{
             minHeight: 48,
             '& .MuiTabs-indicator': {
-              backgroundColor: '#10b981',
+              background: 'linear-gradient(90deg, #10b981, #8b5cf6, #ec4899)',
               height: 3,
               borderRadius: '3px 3px 0 0',
             },
@@ -170,21 +157,29 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onTabChange }) => {
               fontSize: '0.95rem',
               minHeight: 48,
               mr: 2,
+              borderRadius: '10px 10px 0 0',
+              transition: 'color 0.2s, background-color 0.2s',
+              '& svg': { transition: 'transform 0.3s cubic-bezier(0.3, 1.6, 0.5, 1)' },
               '&.Mui-selected': {
                 color: '#f8fafc',
               },
+              '&.Mui-selected svg': { color: '#c4b5fd' },
               '&:hover': {
-                color: '#cbd5e1',
-              }
+                color: '#f1f5f9',
+                backgroundColor: 'rgba(139, 92, 246, 0.08)',
+              },
+              '&:hover svg': { transform: 'scale(1.2) rotate(-8deg)' },
             }
           }}
         >
-          <Tab icon={<Columns size={18} />} iconPosition="start" label="Tier Comparison View" />
-          <Tab icon={<Library size={18} />} iconPosition="start" label="Library Catalog & Efficiency Rank" />
-          <Tab icon={<GitCompare size={18} />} iconPosition="start" label="Text Diff Engine" />
-          <Tab icon={<Calculator size={18} />} iconPosition="start" label="Cost Calculator" />
-          <Tab icon={<Scissors size={18} />} iconPosition="start" label="Prompt Tokenizer & Downgrader" />
+          <Tab icon={<Columns size={18} />} iconPosition="start" label="Compare Tiers" />
+          <Tab icon={<Library size={18} />} iconPosition="start" label="Library" />
+          <Tab icon={<GitCompare size={18} />} iconPosition="start" label="Diff" />
+          <Tab icon={<Calculator size={18} />} iconPosition="start" label="Cost" />
+          <Tab icon={<Scissors size={18} />} iconPosition="start" label="Downgrader" />
+          <Tab icon={<FlaskConical size={18} />} iconPosition="start" label="Live Eval" />
         </Tabs>
+        </Tooltip>
       </Container>
     </Box>
   );

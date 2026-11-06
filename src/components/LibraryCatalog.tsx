@@ -19,26 +19,17 @@ import {
   Paper,
   IconButton,
   Button,
-  Tooltip,
   Stack,
-  ToggleButtonGroup,
-  ToggleButton
 } from '@mui/material';
-import {
-  Search,
-  Filter,
-  ArrowUpDown,
-  Copy,
-  Check,
-  Zap,
-  GitCompare,
-  LayoutGrid,
-  List as ListIcon
-} from 'lucide-react';
-import { PROMPTS, TASK_GROUPS } from '../data/prompts';
+import { Search, Copy, Check, Zap, GitCompare } from 'lucide-react';
 import { SUPPORTED_MODELS } from '../data/models';
-import { Prompt, TaskCategory, Tier } from '../types/prompt';
+import { Tier } from '../types/prompt';
 import { calculateEfficiencyScore } from '../utils/tokenizer';
+import { getTaskForPrompt } from '../data/selectors';
+import { useEvalResults } from '../state/evalResults';
+import { useCopy } from '../hooks/useCopy';
+import { SourceBadge } from './SourceBadge';
+import { TIER_THEME } from '../theme/tiers';
 
 interface LibraryCatalogProps {
   onSelectTaskForComparison: (taskId: string) => void;
@@ -56,23 +47,12 @@ export const LibraryCatalog: React.FC<LibraryCatalogProps> = ({
   const [minQuality, setMinQuality] = useState<number>(0);
   const [sortBy, setSortBy] = useState<'efficiency' | 'quality' | 'tokens' | 'cost' | 'latency'>('efficiency');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const { viewList } = useEvalResults();
+  const { copiedId, copy } = useCopy();
 
-  const handleCopy = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  // Filter and sort prompts dataset
   const filteredPrompts = useMemo(() => {
-    return PROMPTS.filter((prompt) => {
-      const taskGroup = TASK_GROUPS.find((tg) => 
-        tg.bare_prompt_id === prompt.id || 
-        tg.standard_prompt_id === prompt.id || 
-        tg.robust_prompt_id === prompt.id
-      );
+    return viewList.filter((prompt) => {
+      const taskGroup = getTaskForPrompt(prompt.id);
 
       // Search match
       const query = searchQuery.toLowerCase();
@@ -118,20 +98,18 @@ export const LibraryCatalog: React.FC<LibraryCatalogProps> = ({
 
       return sortOrder === 'desc' ? valB - valA : valA - valB;
     });
-  }, [searchQuery, categoryFilter, tierFilter, modelFilter, minQuality, sortBy, sortOrder]);
+  }, [viewList, searchQuery, categoryFilter, tierFilter, modelFilter, minQuality, sortBy, sortOrder]);
 
-  const getTierColor = (tier: Tier) => {
-    if (tier === 'bare') return { bg: 'rgba(16, 185, 129, 0.15)', color: '#10b981' };
-    if (tier === 'standard') return { bg: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6' };
-    return { bg: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' };
-  };
+  const getTierColor = (tier: Tier) => ({ bg: TIER_THEME[tier].soft, color: TIER_THEME[tier].color });
+  const maxEfficiency = Math.max(1, ...viewList.map((p) => calculateEfficiencyScore(p.quality_score, p.token_count)));
+  const filterKey = [searchQuery, categoryFilter, tierFilter, modelFilter, minQuality, sortBy, sortOrder].join('|');
 
   return (
     <Box sx={{ py: 3 }}>
       {/* Search & Filter Control Bar */}
       <Box className="glass-panel" sx={{ p: 3, mb: 4 }}>
         <Typography variant="h6" sx={{ fontWeight: 800, color: '#f8fafc', mb: 2.5 }}>
-          Prompt Library & Efficiency Ranking
+          Prompt <span className="gradient-text">Library</span> & Efficiency Ranking
         </Typography>
 
         <Grid container spacing={2} alignItems="center">
@@ -204,8 +182,32 @@ export const LibraryCatalog: React.FC<LibraryCatalogProps> = ({
             </FormControl>
           </Grid>
 
+          {/* Model Filter */}
+          <Grid item xs={6} md={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel sx={{ color: '#94a3b8' }}>Model</InputLabel>
+              <Select
+                value={modelFilter}
+                label="Model"
+                onChange={(e) => setModelFilter(e.target.value)}
+                sx={{
+                  bgcolor: 'rgba(15, 23, 42, 0.8)',
+                  color: '#f8fafc',
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.12)' },
+                }}
+              >
+                <MenuItem value="all">All Models</MenuItem>
+                {SUPPORTED_MODELS.map((m) => (
+                  <MenuItem key={m.id} value={m.id}>
+                    {m.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
           {/* Min Quality Slider */}
-          <Grid item xs={12} md={4}>
+          <Grid item xs={6} md={2}>
             <Box sx={{ px: 1 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
                 <Typography variant="caption" sx={{ color: '#94a3b8' }}>
@@ -231,7 +233,7 @@ export const LibraryCatalog: React.FC<LibraryCatalogProps> = ({
 
         {/* Sort & Layout Toggle Row */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3, pt: 2, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <Stack direction="row" spacing={1.5} alignItems="center">
+          <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" gap={1} sx={{ '& > *': { ml: '0 !important' } }}>
             <Typography variant="body2" sx={{ color: '#94a3b8', fontWeight: 600 }}>
               Sort by:
             </Typography>
@@ -274,7 +276,7 @@ export const LibraryCatalog: React.FC<LibraryCatalogProps> = ({
           </Stack>
 
           <Typography variant="caption" sx={{ color: '#64748b' }}>
-            Showing <strong>{filteredPrompts.length}</strong> of {PROMPTS.length} prompts
+            Showing <strong>{filteredPrompts.length}</strong> of {viewList.length} prompts
           </Typography>
         </Box>
       </Box>
@@ -295,20 +297,19 @@ export const LibraryCatalog: React.FC<LibraryCatalogProps> = ({
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredPrompts.map((prompt) => {
-              const taskGroup = TASK_GROUPS.find((tg) =>
-                tg.bare_prompt_id === prompt.id ||
-                tg.standard_prompt_id === prompt.id ||
-                tg.robust_prompt_id === prompt.id
-              );
+            {filteredPrompts.map((prompt, index) => {
+              const taskGroup = getTaskForPrompt(prompt.id);
               const tierColors = getTierColor(prompt.tier);
               const efficiency = calculateEfficiencyScore(prompt.quality_score, prompt.token_count);
 
               return (
                 <TableRow
-                  key={prompt.id}
+                  key={`${prompt.id}-${filterKey}`}
+                  className="row-anim"
+                  style={{ animationDelay: `${Math.min(index, 20) * 25}ms` }}
                   sx={{
-                    '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' },
+                    transition: 'background-color 0.2s, box-shadow 0.2s',
+                    '&:hover': { bgcolor: tierColors.bg, boxShadow: `inset 4px 0 0 ${tierColors.color}` },
                     borderBottom: '1px solid rgba(255,255,255,0.05)',
                   }}
                 >
@@ -323,7 +324,7 @@ export const LibraryCatalog: React.FC<LibraryCatalogProps> = ({
 
                   <TableCell>
                     <Chip
-                      label={prompt.tier}
+                      label={`${TIER_THEME[prompt.tier].emoji} ${prompt.tier}`}
                       size="small"
                       sx={{
                         fontWeight: 700,
@@ -342,6 +343,7 @@ export const LibraryCatalog: React.FC<LibraryCatalogProps> = ({
                   </TableCell>
 
                   <TableCell align="center">
+                    <Stack direction="row" spacing={0.5} justifyContent="center" alignItems="center">
                     <Chip
                       label={`${prompt.quality_score}/100`}
                       size="small"
@@ -351,6 +353,8 @@ export const LibraryCatalog: React.FC<LibraryCatalogProps> = ({
                         fontWeight: 700,
                       }}
                     />
+                    <SourceBadge source={prompt.source} runs={prompt.runs} />
+                    </Stack>
                   </TableCell>
 
                   <TableCell align="center">
@@ -359,6 +363,9 @@ export const LibraryCatalog: React.FC<LibraryCatalogProps> = ({
                       <Typography variant="body2" sx={{ fontWeight: 800, color: '#10b981' }}>
                         {efficiency}
                       </Typography>
+                    </Box>
+                    <Box sx={{ mt: 0.75, mx: 'auto', width: 70, height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                      <Box sx={{ height: '100%', width: `${(efficiency / maxEfficiency) * 100}%`, background: TIER_THEME[prompt.tier].gradient }} />
                     </Box>
                   </TableCell>
 
@@ -388,7 +395,8 @@ export const LibraryCatalog: React.FC<LibraryCatalogProps> = ({
                     <Stack direction="row" spacing={1} justifyContent="flex-end">
                       <IconButton
                         size="small"
-                        onClick={() => handleCopy(prompt.prompt_text, prompt.id)}
+                        aria-label="Copy prompt"
+                        onClick={() => copy(prompt.prompt_text, prompt.id)}
                         sx={{ color: copiedId === prompt.id ? '#10b981' : '#94a3b8' }}
                       >
                         {copiedId === prompt.id ? <Check size={16} /> : <Copy size={16} />}
@@ -402,6 +410,16 @@ export const LibraryCatalog: React.FC<LibraryCatalogProps> = ({
                         >
                           Compare 3 Tiers
                         </Button>
+                      )}
+                      {taskGroup && prompt.tier !== 'robust' && (
+                        <IconButton
+                          size="small"
+                          aria-label="Diff against robust tier"
+                          onClick={() => onOpenDiff(taskGroup.id, prompt.tier, 'robust')}
+                          sx={{ color: '#94a3b8' }}
+                        >
+                          <GitCompare size={16} />
+                        </IconButton>
                       )}
                     </Stack>
                   </TableCell>

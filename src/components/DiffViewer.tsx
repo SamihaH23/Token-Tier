@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Box,
   Typography,
@@ -7,50 +7,33 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Chip,
-  Button,
   Stack,
   Alert
 } from '@mui/material';
-import {
-  GitCompare,
-  ArrowRight,
-  Sparkles,
-  Scissors,
-  CheckCircle2,
-  TrendingDown
-} from 'lucide-react';
-import { PROMPTS, TASK_GROUPS } from '../data/prompts';
+import { GitCompare, ArrowRight, Scissors } from 'lucide-react';
+import { TASK_GROUPS } from '../data/prompts';
 import { Tier } from '../types/prompt';
 import { computeTextDiff, getDiffStats } from '../utils/diffHelper';
+import { getPromptIdForTier, getTask } from '../data/selectors';
+import { useEvalResults } from '../state/evalResults';
 
 interface DiffViewerProps {
-  initialTaskId?: string;
-  initialTierA?: Tier;
-  initialTierB?: Tier;
+  taskId: string;
+  tierA: Tier;
+  tierB: Tier;
+  onChange: (taskId: string, tierA: Tier, tierB: Tier) => void;
 }
 
-export const DiffViewer: React.FC<DiffViewerProps> = ({
-  initialTaskId,
-  initialTierA = 'standard',
-  initialTierB = 'robust',
-}) => {
-  const [taskId, setTaskId] = useState<string>(initialTaskId || TASK_GROUPS[0].id);
-  const [tierA, setTierA] = useState<Tier>(initialTierA);
-  const [tierB, setTierB] = useState<Tier>(initialTierB);
+export const DiffViewer: React.FC<DiffViewerProps> = ({ taskId, tierA, tierB, onChange }) => {
+  const { views } = useEvalResults();
+  const selectedTask = getTask(taskId);
+  const setTaskId = (id: string) => onChange(id, tierA, tierB);
+  const setTierA = (t: Tier) => onChange(selectedTask.id, t, tierB);
+  const setTierB = (t: Tier) => onChange(selectedTask.id, tierA, t);
 
-  const selectedTask = TASK_GROUPS.find((t) => t.id === taskId) || TASK_GROUPS[0];
+  const promptA = views[getPromptIdForTier(selectedTask, tierA)];
+  const promptB = views[getPromptIdForTier(selectedTask, tierB)];
 
-  const getPromptForTier = (t: Tier) => {
-    if (t === 'bare') return PROMPTS.find((p) => p.id === selectedTask.bare_prompt_id)!;
-    if (t === 'standard') return PROMPTS.find((p) => p.id === selectedTask.standard_prompt_id)!;
-    return PROMPTS.find((p) => p.id === selectedTask.robust_prompt_id)!;
-  };
-
-  const promptA = getPromptForTier(tierA);
-  const promptB = getPromptForTier(tierB);
-
-  // Compute text diff between Tier A and Tier B
   const diffParts = computeTextDiff(promptA.prompt_text, promptB.prompt_text);
   const stats = getDiffStats(diffParts);
 
@@ -65,7 +48,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
           <GitCompare color="#10b981" size={24} />
           <Typography variant="h6" sx={{ fontWeight: 800, color: '#f8fafc' }}>
-            Prompt Text Diff Engine
+            Prompt <span className="gradient-text">Diff</span>
           </Typography>
         </Box>
         <Typography variant="body2" sx={{ color: '#94a3b8', mb: 3 }}>
@@ -78,7 +61,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
             <FormControl fullWidth size="small">
               <InputLabel sx={{ color: '#94a3b8' }}>Task Group</InputLabel>
               <Select
-                value={taskId}
+                value={selectedTask.id}
                 label="Task Group"
                 onChange={(e) => setTaskId(e.target.value)}
                 sx={{
@@ -145,7 +128,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
       </Box>
 
       {/* Diff Impact Summary Bar */}
-      <Grid container spacing={2} sx={{ mb: 4 }}>
+      <Grid container spacing={2} sx={{ mb: 4 }} className="stagger">
         <Grid item xs={12} sm={4}>
           <Box className="glass-panel" sx={{ p: 2.5, textAlign: 'center' }}>
             <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
@@ -207,18 +190,19 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
           </Stack>
         </Box>
 
-        <Box className="prompt-code-block" sx={{ minHeight: 180, fontSize: '0.95rem' }}>
+        <Box className="prompt-code-block" key={`${selectedTask.id}-${tierA}-${tierB}`} sx={{ minHeight: 180, fontSize: '0.95rem' }}>
           {diffParts.map((part, index) => {
+            const delay = { animationDelay: `${Math.min(index, 40) * 20}ms` };
             if (part.added) {
               return (
-                <span key={index} className="diff-added">
+                <span key={index} className="diff-added" style={delay}>
                   {part.value}
                 </span>
               );
             }
             if (part.removed) {
               return (
-                <span key={index} className="diff-removed">
+                <span key={index} className="diff-removed" style={delay}>
                   {part.value}
                 </span>
               );
@@ -242,7 +226,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
           Engineering Prompt Optimization Analysis:
         </Typography>
         <Typography variant="body2" sx={{ color: '#cbd5e1' }}>
-          Comparing <strong>{tierA.toUpperCase()}</strong> vs <strong>{tierB.toUpperCase()}</strong> shows that {Math.abs(tokenDelta)} tokens can be trimmed with a quality shift of only {Math.abs(qualityDelta)} points. Unnecessary persona priming, conversational disclaimers, and redundant instructions were isolated cleanly.
+          Going from <strong>{tierA.toUpperCase()}</strong> to <strong>{tierB.toUpperCase()}</strong> adds {stats.wordsAdded} words and removes {stats.wordsRemoved} ({stats.unchangedWords} unchanged), a change of {tokenDelta > 0 ? '+' : ''}{tokenDelta} tokens for a quality shift of {qualityDelta > 0 ? '+' : ''}{qualityDelta} points.
         </Typography>
       </Alert>
     </Box>
